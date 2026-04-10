@@ -1,6 +1,6 @@
 import pandas as pd
 
-def get_weights(signal_row, long_quantile = 0.3, short_quantile = 0.3):
+def get_weights(signal_row, long_quantile, short_quantile):
     signal_row = signal_row.dropna()
 
     n = len(signal_row)
@@ -21,10 +21,10 @@ def get_weights(signal_row, long_quantile = 0.3, short_quantile = 0.3):
 
     return weights
 
-def compute_weights(signal_df):
+def compute_weights(signal_df, long_quantile, short_quantile):
     weights_list = []
     for date in signal_df.index: # creates a matrix with the calculated weights dates x stocks
-        w = get_weights(signal_df.loc[date]) # sample weights for all stocks at this point in time
+        w = get_weights(signal_df.loc[date], long_quantile, short_quantile) # sample weights for all stocks at this point in time
         w.name = date
         weights_list.append(w)
 
