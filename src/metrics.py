@@ -1,16 +1,18 @@
-import yfinance as yf
-import pandas as np
+import numpy as np
 
-# load the data from yf
-def load_data(tickers, start_date, end_date):
-    data = yf.download(tickers, start = start_date, end = end_date, auto_adjust = True)[("Close")] # adjust prices by dividends
-    return data
+def performance_metrics(returns):
+    mean_monthly = returns.mean() # returns are given on a monthly basis already
+    vol_monthly = returns.std()
 
-# filter monthly prices out of data
-def get_monthly_prices(data):
-    return data.resample("M").last() # group into monthly buckets and get last available price at this month
+    annual_return = mean_monthly * 12
+    annual_vol = vol_monthly * np.sqrt(12)
+    sharpe = annual_return / annual_vol if annual_vol != 0 else np.nan
 
-# filter returns out of the prices
-def get_monthly_returns(prices):
-    return prices.pct_change() # vector of changes in %
+    return annual_return, annual_vol, sharpe
+
+def drawdown(cumulative_returns):
+    running_max = cumulative_returns.cummax() # stores the highest value reached so far
+    dd = cumulative_returns / running_max - 1 # current value / max value - 1; dd_min is max drawdown - lowest negative number
+    return dd, dd.min()
+
 
