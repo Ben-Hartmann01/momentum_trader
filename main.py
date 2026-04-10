@@ -3,17 +3,45 @@ from src.signals import momentum_signal
 from src.portfolio import compute_weights
 from src.backtest import compute_returns, apply_transaction_costs
 from src.metrics import performance_metrics, drawdown
+from src.random_portfolio import compute_random_weights
 
 import matplotlib.pyplot as plt
+import pandas as pd
 
 # Stocks
 tickers = [
-    "AAPL", "MSFT", "AMZN", "META", "NVDA",
-    "JPM", "GS", "XOM", "KO", "WMT"
+    # Tech
+    "AAPL","MSFT","AMZN","META","NVDA","GOOGL","GOOG","TSLA",
+    "ADBE","CRM","ORCL","CSCO","INTC","AMD","QCOM","TXN","AVGO",
+
+    # Finance
+    "JPM","GS","MS","BAC","WFC","C","BLK","SCHW",
+
+    # Healthcare
+    "JNJ","PFE","MRK","ABBV","LLY","TMO","ABT","DHR","BMY","GILD",
+
+    # Consumer
+    "KO","PEP","WMT","COST","HD","MCD","NKE","SBUX","TGT","LOW",
+
+    # Energy
+    "XOM","CVX","COP","SLB","EOG","PSX",
+
+    # Industrials
+    "CAT","BA","GE","HON","UPS","FDX","DE","LMT","RTX","MMM",
+
+    # Utilities / Others
+    "NEE","DUK","SO","AEP","EXC",
+
+    # Communication / Media
+    "NFLX","DIS","CMCSA","VZ","T","TMUS",
+
+    # Extra diversification
+    "SPGI","ICE","ADP","INTU","ISRG","MU","PYPL","AMAT","KLAC","LRCX"
 ]
 
+
 start_date = "2018-01-01"
-end_date = "2025-01-01"
+end_date = "2026-04-10"
 
 # Data
 data = load_data(tickers, start_date, end_date)
@@ -23,74 +51,149 @@ returns = get_monthly_returns(prices)
 returns = returns.dropna()
 prices = prices.loc[returns.index]
 
-# 70 / 30 Split
-split_idx = int(len(prices) * 0.8)
+# Optimization
+def select_best_params(train_prices, train_returns, lookbacks, quantiles):
+    best_result = None
+    best_params = None
 
-train_prices = prices.iloc[:split_idx].copy() # dont mess up the real prices & returns
-test_prices = prices.iloc[split_idx:].copy()
+    for lb in lookbacks:
+        for q in quantiles:
+            signals = momentum_signal(train_prices, lookback=lb)
+            weights = compute_weights(signals, long_quantile=q, short_quantile=q)
 
-train_returns = returns.iloc[:split_idx].copy()
-test_returns = returns.iloc[split_idx:].copy()
+            rets = compute_returns(weights, train_returns)
+            rets_net, _ = apply_transaction_costs(weights, rets)
 
-lookbacks = [6, 9, 12]
-quantiles = [0.2, 0.3, 0.4]
+            ann_ret, ann_vol, sharpe = performance_metrics(rets_net.dropna())
 
-best_result = None
-best_params = None
+            if best_result is None or sharpe > best_result:
+                best_result = sharpe
+                best_params = {"lookback": lb, "quantile": q}
 
-for lb in lookbacks:
-    for q in quantiles:
-        signals = momentum_signal(prices, lookback=lb)   # would need to adapt your function
-        train_signals = signals.iloc[:split_idx].copy()
-
-        train_weights = compute_weights(
-            train_signals,
-            long_quantile=q,
-            short_quantile=q
-        )
-
-        train_rets = compute_returns(train_weights, train_returns)
-        train_rets_net, _ = apply_transaction_costs(train_weights, train_rets)
-
-        ann_ret, ann_vol, sharpe = performance_metrics(train_rets_net.dropna())
-
-        if best_result is None or sharpe > best_result: # Measure best result with sharpe and take the corr. params
-            best_result = sharpe
-            best_params = {"lookback": lb, "quantile": q}
-
-best_lb = best_params["lookback"]
-best_q = best_params["quantile"]
+    return best_params, best_result
 
 # Test
-signals = momentum_signal(prices, best_lb)
-test_signals = signals.iloc[split_idx:].copy()
-test_weights = compute_weights(test_signals, best_q, best_q)
+def run_test_block(prices, returns, test_start, test_end, lookback, quantile):
+    block_prices = prices.iloc[:test_end].copy()
+    block_returns = returns.iloc[:test_end].copy()
 
-test_strategy_returns = compute_returns(test_weights, test_returns)
-test_strategy_returns_net, test_turnover = apply_transaction_costs(
-    test_weights, test_strategy_returns
-)
+    signals = momentum_signal(block_prices, lookback)
+    weights = compute_weights(signals, quantile, quantile)
 
-# Metrics on Test
-cumulative_test = (1 + test_strategy_returns.fillna(0)).cumprod()
-cumulative_test_net = (1 + test_strategy_returns_net.fillna(0)).cumprod()
+    test_weights = weights.iloc[test_start:test_end].copy()
+    test_returns = block_returns.iloc[test_start:test_end].copy()
 
-ann_ret, ann_vol, sharpe = performance_metrics(test_strategy_returns_net.dropna())
-dd, max_dd = drawdown(cumulative_test_net)
+    strategy_returns = compute_returns(test_weights, test_returns)
+    strategy_returns_net, turnover = apply_transaction_costs(test_weights, strategy_returns)
 
+    return test_weights, strategy_returns_net, turnover
 
-print("Best Lookback =", best_lb)
-print("Best Quantile", best_q)
-print("TEST RESULTS")
-print("Annual return:", round(ann_ret, 4))
-print("Annual vol:", round(ann_vol, 4))
-print("Sharpe:", round(sharpe, 4))
-print("Max drawdown:", round(max_dd, 4))
+# Benchmark
+def run_random_benchmark(prices, returns, test_start, test_end, lookback, quantile):
+    block_prices = prices.iloc[:test_end].copy()
+    block_returns = returns.iloc[:test_end].copy()
 
-# Plot TEST only
+    signals = momentum_signal(block_prices, lookback)
+    weights = compute_random_weights(signals, quantile, quantile)
+
+    test_weights = weights.iloc[test_start:test_end].copy()
+    test_returns = block_returns.iloc[test_start:test_end].copy()
+
+    strategy_returns = compute_returns(test_weights, test_returns)
+    strategy_returns_net, turnover = apply_transaction_costs(test_weights, strategy_returns)
+
+    return test_weights, strategy_returns_net, turnover
+
+lookbacks = [3, 6, 9, 12]
+quantiles = [0.1, 0.2, 0.3, 0.4, 0.5]
+
+train_window = 36   # 36 months of training
+test_window = 6     # 6 months of testing
+
+all_test_returns = []
+all_bm_returns = []
+selected_params_history = []
+
+n_periods = len(prices)
+
+for test_start in range(train_window, n_periods - test_window + 1, test_window): # every possible 6 month window in whole data set
+    train_start = test_start - train_window # use 36 prior months for training
+    test_end = test_start + test_window
+
+    train_prices = prices.iloc[train_start:test_start].copy()
+    train_returns = returns.iloc[train_start:test_start].copy()
+
+    best_params, best_result = select_best_params(
+        train_prices, train_returns, lookbacks, quantiles
+    )
+
+    best_lb = best_params["lookback"]
+    best_q = best_params["quantile"]
+
+    # Filter returns
+    _, test_strategy_returns_net, _ = run_test_block(
+        prices=prices,
+        returns=returns,
+        test_start=test_start,
+        test_end=test_end,
+        lookback=best_lb,
+        quantile=best_q
+    )
+
+    _, bm_strategy_returns_net, _ = run_random_benchmark(
+        prices=prices,
+        returns=returns,
+        test_start=test_start,
+        test_end=test_end,
+        lookback=best_lb,
+        quantile=best_q
+    )
+
+    all_test_returns.append(test_strategy_returns_net)
+    all_bm_returns.append(bm_strategy_returns_net)
+
+    # add params to dates
+    selected_params_history.append({
+        "test_start": prices.index[test_start],
+        "test_end": prices.index[test_end - 1],
+        "lookback": best_lb,
+        "quantile": best_q,
+        "train_sharpe": best_result
+    })
+
+# Out of sample returns for strat and BM
+oos_returns = pd.concat(all_test_returns).sort_index()
+bm_oos_returns = pd.concat(all_bm_returns).sort_index()
+
+oos_cumulative = (1 + oos_returns.fillna(0)).cumprod()
+bm_cumulative = (1 + bm_oos_returns.fillna(0)).cumprod()
+
+ann_ret, ann_vol, sharpe = performance_metrics(oos_returns.dropna())
+dd, max_dd = drawdown(oos_cumulative)
+
+bm_ann_ret, bm_ann_vol, bm_sharpe = performance_metrics(bm_oos_returns.dropna())
+bm_dd, bm_max_dd = drawdown(bm_cumulative)
+
+print("WALK-FORWARD RESULTS")
+print("Strategy Annual return:", round(ann_ret, 4))
+print("Strategy Annual vol:", round(ann_vol, 4))
+print("Strategy Sharpe:", round(sharpe, 4))
+print("Strategy Max drawdown:", round(max_dd, 4))
+
+print("\nBENCHMARK RESULTS")
+print("Benchmark Annual return:", round(bm_ann_ret, 4))
+print("Benchmark Annual vol:", round(bm_ann_vol, 4))
+print("Benchmark Sharpe:", round(bm_sharpe, 4))
+print("Benchmark Max drawdown:", round(bm_max_dd, 4))
+
+params_df = pd.DataFrame(selected_params_history)
+print("\nSELECTED PARAMETERS BY WINDOW")
+print(params_df)
+
 plt.figure(figsize=(10, 6))
-plt.plot(cumulative_test_net, label="Test Net")
+plt.plot(oos_cumulative, label="Strategy", c="red")
+plt.plot(bm_cumulative, label="Benchmark", c="blue")
 plt.legend()
-plt.title("Momentum Strategy - Test Set")
+plt.title("Walk-Forward Strategy vs Benchmark")
 plt.grid()
 plt.show()

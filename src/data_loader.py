@@ -1,5 +1,4 @@
 import yfinance as yf
-import pandas as np
 
 # load the data from yf
 def load_data(tickers, start_date, end_date):
