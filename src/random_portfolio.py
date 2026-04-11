@@ -37,3 +37,47 @@ def compute_random_weights(signal_df, long_quantile, short_quantile):
         weights_list.append(w)
 
     return pd.DataFrame(weights_list).fillna(0.0)
+
+def get_random_weights_signal_based(signal_row, long_quantile, short_quantile, rng):
+    signal_row = signal_row.dropna()
+
+    n = len(signal_row)
+    if n == 0:
+        return pd.Series(dtype = float)
+
+    n_long = max(1, int(n * long_quantile))
+    n_short = max(1, int(n * short_quantile)) # we go long / short on 0.3 * n assets and at least 1 each
+
+    names = signal_row.index.values
+
+    if len(names) < (n_short + n_long):
+        return pd.Series(0.0, index = signal_row.index) # make sure there are enough assets to apply the strat
+
+    choice = rng.choice(names, size = n_long + n_short, replace = False) # generates random sample of assets
+
+    long_stocks = choice[:n_long]
+    short_stocks = choice[n_long:] # half of them short, half long
+
+    weights = pd.Series(0.0, index = signal_row.index) # initializes a pd.Series with 0.0s anywhere; with indices equal to signal:row
+
+    long_random = rng.random(n_long)
+    long_random = long_random / long_random.sum()
+
+    short_random = rng.random(n_short)
+    short_random = short_random / short_random.sum()
+
+    weights.loc[long_stocks] = long_random
+    weights.loc[short_stocks] = - short_random
+
+    return weights
+
+def compute_random_weights_signal_based(signal_df, long_quantile, short_quantile):
+    rng = np.random.default_rng() # generate random number generator for random choice
+
+    weights_list = []
+    for date in signal_df.index: # creates a matrix with the calculated weights dates x stocks
+        w = get_random_weights_signal_based(signal_df.loc[date], long_quantile, short_quantile, rng) # sample weights for all stocks at this point in time
+        w.name = date
+        weights_list.append(w)
+
+    return pd.DataFrame(weights_list).fillna(0.0)

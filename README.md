@@ -18,23 +18,38 @@ The main objectives are:
 * to assess whether the signal and portfolio construction provide meaningful value
 ---
 
-## Strategy Description
+## Strategies Description
 
-The current strategy is a cross-sectional momentum strategy:
+The current 2 compared strategies are cross-sectional momentum strategies:
+1. Equal-weight Strategy
+   1. A momentum signal is computed based on past price performance over a given lookback window 
 
-1. A momentum signal is computed based on past price performance over a given lookback window 
+   2. Assets are ranked according to the signal
 
-2. Assets are ranked according to the signal
+   3. Portfolio construction:
 
-3. Portfolio construction:
+      * top quantile is taken long
+      * bottom quantile is taken short
+      * everything in between stays neutral
+      * positions are equal-weighted within each side
+      * the portfolio is market-neutral (long equals short; exposures are 1 and -1; net = 0, abs = 2)
 
-   * top quantile is taken long
-   * bottom quantile is taken short
-   * everything in between stays neutral
-   * positions are equal-weighted within each side
-   * the portfolio is market-neutral (long equals short)
+   4. The portfolio is rebalanced on a monthly basis (ME)
 
-4. The portfolio is rebalanced on a monthly basis (ME)
+2. Signal-based-weight Strategy
+   1. A momentum signal is computed based on past price performance over a given lookback window 
+
+   2. Assets are ranked according to the signal
+
+   3. Portfolio construction:
+
+      * top quantile assets are taken as long candidates
+      * bottom quantile assets are taken as short candidates
+      * everything in between stays neutral
+      * positions are weighted based on their normalized signal (signal / sum(signals) in this quantile)
+      * the portfolio is market-neutral (long equals short; exposures are 1 and -1; net = 0, abs = 2)
+
+   4. The portfolio is rebalanced on a monthly basis (ME)
 
 ---
 
@@ -69,15 +84,22 @@ Returns are calculated using lagged weights to avoid look-ahead bias. Transactio
 
 ---
 
-## Benchmark
+## Benchmarks
 
-A random long/short portfolio is used as a baseline:
+Random long/short portfolios are used as a baselines:
 
-* the same number of long and short positions 
-* random asset selection
-* identical rebalancing frequency
+1. BM for equal-weight Strategy
+  * fill top and bottom quantile with random assets
+  * weight them equally (+/- 1 / quantile size)
+  * this approach appears to be quiet weak due to complete randomness
+  * ensures same net- & abs- exposure as strategy
 
-Note that the benchmark is stochastic and may vary between runs.
+
+2. BM for signal-based-weight Strategy
+  * use top and bottom quantiles as candidates
+  * weight them equally randomly 
+  * this approach is already quit strong in theory as we only consider best/worst assets based on signal as longs/shorts
+  * ensures same net- & abs- exposure as strategy
 
 ---
 
@@ -99,17 +121,16 @@ main.py
 
 ## Current Limitations
 
-* equal-weight portfolio construction only
 * single signal
 * simplified transaction cost model 
-* weak benchmark (Its tough to not outperform this)
+* weak benchmark (Its tough to not outperform the first BM)
 * no statistical significance testing
 
 ---
 
 ## Planned Improvements
 
-* volatility-adjusted or signal-weighted portfolios
+* clean main
 * improved transaction cost modeling
 * stronger benchmarks 
 * additional signals
