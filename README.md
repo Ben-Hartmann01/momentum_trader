@@ -32,7 +32,7 @@ The current 2 compared strategies are cross-sectional momentum strategies:
       * bottom quantile is taken short
       * everything in between stays neutral
       * positions are equal-weighted within each side
-      * the portfolio is market-neutral (long equals short; exposures are 1 and -1; net = 0, abs = 2)
+      * Net exposures 0, 0.5, 1 get tested (gross expsoure = 2) -> weights within each direction are equal, but cross-directional only in the case of net exposure being 0
 
    4. The portfolio is rebalanced on a monthly basis (ME)
 
@@ -47,7 +47,7 @@ The current 2 compared strategies are cross-sectional momentum strategies:
       * bottom quantile assets are taken as short candidates
       * everything in between stays neutral
       * positions are weighted based on their normalized signal (signal / sum(signals) in this quantile)
-      * the portfolio is market-neutral (long equals short; exposures are 1 and -1; net = 0, abs = 2)
+      * Net exposures 0, 0.5, 1 get tested (gross expsoure = 2) 
 
    4. The portfolio is rebalanced on a monthly basis (ME)
 
@@ -86,20 +86,12 @@ Returns are calculated using lagged weights to avoid look-ahead bias. Transactio
 
 ## Benchmarks
 
-Random long/short portfolios are used as a baselines:
+Buy and hold strategy as Benchmark
 
-1. BM for equal-weight Strategy
-  * fill top and bottom quantile with random assets
-  * weight them equally (+/- 1 / quantile size)
-  * this approach appears to be quiet weak due to complete randomness
-  * ensures same net- & abs- exposure as strategy
+* every asset gets weight 1 / n
+* hold each position until the end of the maturity
+* we therefore have no transaction costs
 
-
-2. BM for signal-based-weight Strategy
-  * use top and bottom quantiles as candidates
-  * weight them equally randomly 
-  * this approach is already quit strong in theory as we only consider best/worst assets based on signal as longs/shorts
-  * ensures same net- & abs- exposure as strategy
 
 ---
 
@@ -111,6 +103,7 @@ src/
 ├── signals.py
 ├── portfolio.py
 ├── backtest.py
+├── benchmark.py
 ├── metrics.py
 ├── random_portfolio.py
 
@@ -125,17 +118,18 @@ main.py
 * simplified transaction cost model 
 * weak benchmark (Its tough to not outperform the first BM)
 * no statistical significance testing
+* there is an obvious improvement of the strategies due to more net exposure
 
 ---
 
 ## Planned Improvements
 
 * clean main
-* improved transaction cost modeling
-* stronger benchmarks 
+* improved transaction cost modeling (check realistic values)
+* different benchmarks 
 * additional signals
 * improved reporting and visualization
-* reproducibility of the benchmark via fixed random seeds
+* get rid of the market exposure bias
 
 ---
 

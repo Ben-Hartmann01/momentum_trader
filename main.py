@@ -4,6 +4,7 @@ from src.portfolio import compute_weights, compute_weights_signal_weighted
 from src.backtest import compute_returns, apply_transaction_costs
 from src.metrics import performance_metrics, drawdown
 from src.random_portfolio import compute_random_weights, compute_random_weights_signal_based
+from src.benchmark import compute_equal_weight_long_only_weights
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -44,6 +45,8 @@ end_date = "2026-04-10"
 
 lookbacks = [3, 6, 9, 12]
 quantiles = [0.1, 0.2, 0.3, 0.4, 0.5]
+net_exposures = [0.0, 0.5, 1.0]
+target_gross_exposure = 2
 
 train_window = 36
 # 36 months training
@@ -68,7 +71,7 @@ def get_weight_function(method: str, benchmark: bool = False):
     raise ValueError(f"Unknown method: {method}")
 
 # Grid search
-def select_best_params(train_prices, train_returns, lookbacks, quantiles, method="equal"):
+def select_best_params(train_prices, train_returns, lookbacks, quantiles, method="equal", target_net_exposure=0.0, target_gross_exposure=2.0):
     best_sharpe = None
     best_params = None
 
@@ -77,7 +80,14 @@ def select_best_params(train_prices, train_returns, lookbacks, quantiles, method
     for lb in lookbacks:
         for q in quantiles:
             signals = momentum_signal(train_prices, lookback=lb)
-            weights = weight_func(signals, long_quantile=q, short_quantile=q)
+
+            weights = weight_func(
+                signals,
+                long_quantile=q,
+                short_quantile=q,
+                target_net_exposure=target_net_exposure,
+                target_gross_exposure=target_gross_exposure,
+            )
 
             rets = compute_returns(weights, train_returns)
             rets_net, _ = apply_transaction_costs(weights, rets)
@@ -91,13 +101,20 @@ def select_best_params(train_prices, train_returns, lookbacks, quantiles, method
     return best_params, best_sharpe
 
 # Runners
-def run_test_block(prices, returns, test_start, test_end, lookback, quantile, method="equal", benchmark=False):
+def run_test_block(prices, returns, test_start, test_end, lookback, quantile, method="equal", benchmark=False, target_net_exposure=0.0, target_gross_exposure=2.0):
     block_prices = prices.iloc[:test_end].copy()
     block_returns = returns.iloc[:test_end].copy()
 
     signals = momentum_signal(block_prices, lookback=lookback)
     weight_func = get_weight_function(method=method, benchmark=benchmark)
-    weights = weight_func(signals, long_quantile=quantile, short_quantile=quantile)
+
+    weights = weight_func(
+        signals,
+        long_quantile=quantile,
+        short_quantile=quantile,
+        target_net_exposure=target_net_exposure,
+        target_gross_exposure=target_gross_exposure,
+    )
 
     test_weights = weights.iloc[test_start:test_end].copy()
     test_returns = block_returns.iloc[test_start:test_end].copy()
@@ -106,6 +123,21 @@ def run_test_block(prices, returns, test_start, test_end, lookback, quantile, me
     strategy_returns_net, turnover = apply_transaction_costs(test_weights, strategy_returns)
 
     return test_weights, strategy_returns_net, turnover
+
+# New BM
+def run_equal_weight_benchmark_block(prices, returns, test_start, test_end):
+    block_prices = prices.iloc[:test_end].copy()
+    block_returns = returns.iloc[:test_end].copy()
+
+    benchmark_weights = compute_equal_weight_long_only_weights(block_prices) # signals dont matter due to benchmark strat
+
+    test_weights = benchmark_weights.iloc[test_start:test_end].copy()
+    test_returns = block_returns.iloc[test_start:test_end].copy()
+
+    benchmark_returns = compute_returns(test_weights, test_returns)
+    benchmark_returns_net, turnover = apply_transaction_costs(test_weights, benchmark_returns)
+
+    return test_weights, benchmark_returns_net, turnover
 
 # Results
 def summarize_results(returns_series: pd.Series):
@@ -124,7 +156,7 @@ def summarize_results(returns_series: pd.Series):
     }
 
 # Training/testing 36 + 6
-def run_walk_forward(prices, returns, lookbacks, quantiles, train_window, test_window, method="equal"):
+def run_walk_forward(prices, returns, lookbacks, quantiles, train_window, test_window, method="equal", target_net_exposure=0.0, target_gross_exposure=2.0):
     all_strategy_returns = []
     all_benchmark_returns = []
     selected_params_history = []
@@ -144,6 +176,8 @@ def run_walk_forward(prices, returns, lookbacks, quantiles, train_window, test_w
             lookbacks=lookbacks,
             quantiles=quantiles,
             method=method,
+            target_net_exposure=target_net_exposure,
+            target_gross_exposure=target_gross_exposure,
         )
 
         best_lb = best_params["lookback"]
@@ -158,17 +192,15 @@ def run_walk_forward(prices, returns, lookbacks, quantiles, train_window, test_w
             quantile=best_q,
             method=method,
             benchmark=False,
+            target_net_exposure=target_net_exposure,
+            target_gross_exposure=target_gross_exposure,
         )
 
-        _, benchmark_returns_net, _ = run_test_block(
+        _, benchmark_returns_net, _ = run_equal_weight_benchmark_block(
             prices=prices,
             returns=returns,
             test_start=test_start,
             test_end=test_end,
-            lookback=best_lb,
-            quantile=best_q,
-            method=method,
-            benchmark=True,
         )
 
         all_strategy_returns.append(strategy_returns_net)
@@ -217,49 +249,68 @@ def main():
     prices = prices.loc[returns.index]
 
     # Run both strategies
-    equal_results = run_walk_forward(
-        prices=prices,
-        returns=returns,
-        lookbacks=lookbacks,
-        quantiles=quantiles,
-        train_window=train_window,
-        test_window=test_window,
-        method="equal",
-    )
+    equal_results_by_net = {}
+    signal_results_by_net = {}
 
-    signal_results = run_walk_forward(
-        prices=prices,
-        returns=returns,
-        lookbacks=lookbacks,
-        quantiles=quantiles,
-        train_window=train_window,
-        test_window=test_window,
-        method="signal",
-    )
+    for net in net_exposures:
+        equal_results_by_net[net] = run_walk_forward(
+            prices=prices,
+            returns=returns,
+            lookbacks=lookbacks,
+            quantiles=quantiles,
+            train_window=train_window,
+            test_window=test_window,
+            method="equal",
+            target_net_exposure=net,
+            target_gross_exposure=target_gross_exposure,
+        )
+
+        signal_results_by_net[net] = run_walk_forward(
+            prices=prices,
+            returns=returns,
+            lookbacks=lookbacks,
+            quantiles=quantiles,
+            train_window=train_window,
+            test_window=test_window,
+            method="signal",
+            target_net_exposure=net,
+            target_gross_exposure=target_gross_exposure,
+        )
+
+    benchmark_results = equal_results_by_net[1.0]["benchmark"]
 
     # Print strategy summaries
-    print_summary("WALK-FORWARD RESULTS EQUALLY WEIGHTED", equal_results["strategy"])
-    print_summary("WALK-FORWARD RESULTS SIGNAL-WEIGHTED", signal_results["strategy"])
+    for net, results in equal_results_by_net.items():
+        print_summary(f"WALK-FORWARD RESULTS EQUALLY WEIGHTED (NET={net})", results["strategy"])
+
+    for net, results in signal_results_by_net.items():
+        print_summary(f"WALK-FORWARD RESULTS SIGNAL-WEIGHTED (NET={net})", results["strategy"])
 
     # Print benchmark summaries
-    print_summary("BENCHMARK RESULTS (EQUAL METHOD)", equal_results["benchmark"])
-    print_summary("BENCHMARK RESULTS (SIGNAL METHOD)", signal_results["benchmark"])
+    print_summary("BENCHMARK RESULTS (EQUAL-WEIGHT LONG-ONLY)", benchmark_results)
 
     # Print selected parameters
-    print("\nSELECTED PARAMETERS BY WINDOW (Equal-weighted)")
-    print(equal_results["params"])
+    for net, results in equal_results_by_net.items():
+        print(f"\nSELECTED PARAMETERS BY WINDOW (Equal-weighted, NET={net})")
+        print(results["params"])
 
-    print("\nSELECTED PARAMETERS BY WINDOW (Signal-weighted)")
-    print(signal_results["params"])
+    for net, results in signal_results_by_net.items():
+        print(f"\nSELECTED PARAMETERS BY WINDOW (Signal-weighted, NET={net})")
+        print(results["params"])
 
     # Plot cum_returns
     plt.figure(figsize=(10, 6))
-    plt.plot(equal_results["strategy"]["cumulative"], label="Strategy (Equal)")
-    plt.plot(signal_results["strategy"]["cumulative"], label="Strategy (Signal-weighted)")
-    plt.plot(equal_results["benchmark"]["cumulative"], label="Benchmark (Equal)")
-    plt.plot(signal_results["benchmark"]["cumulative"], label="Benchmark (Signal-based)")
+
+    for net, results in equal_results_by_net.items():
+        plt.plot(results["strategy"]["cumulative"], label=f"Equal-weighted (Net={net})")
+
+    for net, results in signal_results_by_net.items():
+        plt.plot(results["strategy"]["cumulative"], label=f"Signal-weighted (Net={net})")
+
+    plt.plot(benchmark_results["cumulative"], label="Benchmark (Equal-weight Long-only)")
+
     plt.legend()
-    plt.title("Walk-Forward Strategies vs Benchmarks")
+    plt.title("Walk-Forward Strategies by Net Exposure")
     plt.grid()
     plt.show()
 
