@@ -20,11 +20,12 @@ The main objectives are:
 
 ## Strategies Description
 
-The current 2 compared strategies are cross-sectional momentum strategies:
+The current 2 compared strategies are cross-sectional momentum/mean_reversion strategies:
 1. Equal-weight Strategy
-   1. A momentum signal is computed based on past price performance over a given lookback window 
+   1. A signal is computed based on past price performance over a given lookback window 
 
    2. Assets are ranked according to the signal
+      * we use a momentum signal and a momentum x mean reversion signal and compare both
 
    3. Portfolio construction:
 
@@ -37,9 +38,10 @@ The current 2 compared strategies are cross-sectional momentum strategies:
    4. The portfolio is rebalanced on a monthly basis (ME)
 
 2. Signal-based-weight Strategy
-   1. A momentum signal is computed based on past price performance over a given lookback window 
+   1. A signal is computed based on past price performance over a given lookback window 
 
    2. Assets are ranked according to the signal
+      * we use a momentum signal and a momentum x mean reversion signal and compare both
 
    3. Portfolio construction:
 
@@ -114,7 +116,6 @@ main.py
 
 ## Current Limitations
 
-* single signal
 * simplified transaction cost model 
 * weak benchmark (Its tough to not outperform the first BM)
 * no statistical significance testing
@@ -124,7 +125,7 @@ main.py
 
 ## Planned Improvements
 
-* clean main
+* clean plot
 * improved transaction cost modeling (check realistic values)
 * different benchmarks 
 * additional signals

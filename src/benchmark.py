@@ -13,14 +13,7 @@ def get_equal_weight_long_only(signal_row):
     return weights
 
 def compute_equal_weight_long_only_weights(signal_df):
-    weights_list = []
-
-    for date in signal_df.index:
-        w = get_equal_weight_long_only(signal_df.loc[date])
-        w.name = date
-        weights_list.append(w)
-
-    return pd.DataFrame(weights_list).fillna(0.0)
+    return signal_df.apply(lambda row: get_equal_weight_long_only(row), axis=1).fillna(0.0) # along the assets (axis 1) apply equal weights
 
 
 

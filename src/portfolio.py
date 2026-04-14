@@ -28,21 +28,6 @@ def get_weights(signal_row, long_quantile, short_quantile, target_net_exposure=0
 
     return weights
 
-def compute_weights(signal_df, long_quantile, short_quantile, target_net_exposure=0.0, target_gross_exposure=2.0):
-    weights_list = []
-    for date in signal_df.index:
-        w = get_weights(
-            signal_df.loc[date],
-            long_quantile,
-            short_quantile,
-            target_net_exposure=target_net_exposure,
-            target_gross_exposure=target_gross_exposure,
-        )
-        w.name = date
-        weights_list.append(w)
-
-    return pd.DataFrame(weights_list).fillna(0.0)
-
 # signal-weighted approach
 def get_weights_signal_weighted(signal_row, long_quantile, short_quantile, target_net_exposure=0.0, target_gross_exposure=2.0):
     signal_row = signal_row.dropna()
@@ -81,14 +66,25 @@ def get_weights_signal_weighted(signal_row, long_quantile, short_quantile, targe
 
     return weights
 
-def compute_weights_signal_weighted(signal_df, long_quantile, short_quantile, target_net_exposure=0.0, target_gross_exposure=2.0):
+def _compute_weights_generic(weight_fn, signal_df, long_quantile, short_quantile,
+                              target_net_exposure=0.0, target_gross_exposure=2.0):
     weights_list = []
-    for date in signal_df.index: # creates a matrix with the calculated weights dates x stocks
-        w = get_weights_signal_weighted(signal_df.loc[date], long_quantile, short_quantile, target_net_exposure, target_gross_exposure) # sample weights for all stocks at this point in time
+    for date in signal_df.index:
+        w = weight_fn(signal_df.loc[date], long_quantile, short_quantile,
+                      target_net_exposure, target_gross_exposure)
         w.name = date
         weights_list.append(w)
-
     return pd.DataFrame(weights_list).fillna(0.0)
+
+def compute_weights(signal_df, long_quantile, short_quantile,
+                    target_net_exposure=0.0, target_gross_exposure=2.0):
+    return _compute_weights_generic(get_weights, signal_df, long_quantile, short_quantile,
+                                    target_net_exposure, target_gross_exposure)
+
+def compute_weights_signal_weighted(signal_df, long_quantile, short_quantile,
+                                    target_net_exposure=0.0, target_gross_exposure=2.0):
+    return _compute_weights_generic(get_weights_signal_weighted, signal_df, long_quantile,
+                                    short_quantile, target_net_exposure, target_gross_exposure)
 
 def check_portfolio(weights, name):
     long_sum = weights.clip(lower=0).sum(axis=1)
